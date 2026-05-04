@@ -1,3 +1,13 @@
+# NOTICE!!!
+
+This is **NOT** the code for the original EgoCast paper! You can find that [here](https://github.com/BCV-Uniandes/EgoCast).
+
+...
+
+...
+
+...
+
 # EgoCast
 
 **[Project page](https://bcv-uniandes.github.io/egocast-wp/) &bull;
