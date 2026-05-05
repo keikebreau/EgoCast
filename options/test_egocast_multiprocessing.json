@@ -1,7 +1,7 @@
 {
     "task": "EgoCast_Video_multiprocessing"  //  root/task/videos-models-options
     , "model": "egocast_multiprocessing" // "plain"
-    , "gpu_ids": [4]
+    , "gpu_ids": [0]
   
     , "merge_bn": true               // merge BN
     , "merge_bn_startpoint": 400000  // merge BN after N iterations
