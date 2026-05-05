@@ -35,7 +35,7 @@ def _find_stabilizer_output_dim(state_dict):
     output_keys = [
         key
         for key, value in state_dict.items()
-        if re.match(r"(module\.)?stabilizer\.\d+\.weight$", key)
+        if re.match(r"(module\.)?(stabilizer|forecast_head\.output)\.\d+\.weight$", key)
         and hasattr(value, "ndim")
         and value.ndim == 2
     ]
@@ -44,6 +44,8 @@ def _find_stabilizer_output_dim(state_dict):
 
     def layer_index(key):
         match = re.search(r"stabilizer\.(\d+)\.weight$", key)
+        if match is None:
+            match = re.search(r"forecast_head\.output\.(\d+)\.weight$", key)
         return int(match.group(1)) if match else -1
 
     output_key = max(output_keys, key=layer_index)
@@ -60,6 +62,18 @@ def _check_checkpoint_shape(opt):
     state_dict = torch.load(checkpoint, map_location="cpu")
     if isinstance(state_dict, dict) and "params" in state_dict:
         state_dict = state_dict["params"]
+
+    checkpoint_is_slowfast = any("forecast_head." in key for key in state_dict.keys())
+    config_is_slowfast = opt["netG"].get("forecast_head", "legacy") == "slowfast"
+    if checkpoint_is_slowfast != config_is_slowfast:
+        checkpoint_head = "slowfast" if checkpoint_is_slowfast else "legacy"
+        config_head = "slowfast" if config_is_slowfast else "legacy"
+        raise ValueError(
+            "Checkpoint/config forecasting head mismatch. The checkpoint uses {}, "
+            "but the current config builds {}. Re-run with --forecast-head {} or edit "
+            "netG.forecast_head in the option file."
+            .format(checkpoint_head, config_head, checkpoint_head)
+        )
 
     checkpoint_dim = _find_stabilizer_output_dim(state_dict)
     expected_dim = _forecast_output_dim(opt)
@@ -112,6 +126,13 @@ def main():
         help="Optional forecasting horizon override. Applied to train/test config sections.",
     )
     parser.add_argument(
+        "--forecast-head",
+        type=str,
+        choices=["legacy", "slowfast"],
+        default=None,
+        help="Optional forecasting head override. Must match the checkpoint architecture.",
+    )
+    parser.add_argument(
         "--skip-indices",
         type=int,
         nargs="*",
@@ -145,6 +166,8 @@ def main():
     if args.future_frames is not None:
         opt["datasets"]["train"]["future_frames"] = args.future_frames
         opt["datasets"]["test"]["future_frames"] = args.future_frames
+    if args.forecast_head is not None:
+        opt["netG"]["forecast_head"] = args.forecast_head
 
     if not opt["datasets"]["test"]["future"]:
         raise ValueError("This script is only for forecasting configs with datasets.test.future=true.")
