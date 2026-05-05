@@ -1,0 +1,4 @@
+__pycache__/
+build/
+dataset/
+ego4d.egg-info/
