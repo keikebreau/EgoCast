@@ -192,6 +192,7 @@ def main():
     vel_errors = []
     aria_errors = []
     rot_errors = []
+    skipped_nonfinite_velocity = []
     skipped = set(args.skip_indices or [])
 
     with torch.no_grad():
@@ -212,10 +213,16 @@ def main():
                 aria_errors.append(_as_float(aria_error))
 
             pos_errors.append(_as_float(pos_error))
-            vel_errors.append(_as_float(vel_error))
+            vel_error = _as_float(vel_error)
+            if torch.isfinite(torch.tensor(vel_error)):
+                vel_errors.append(vel_error)
+            else:
+                skipped_nonfinite_velocity.append(index)
 
     if not pos_errors:
         raise RuntimeError("No test samples were evaluated.")
+    if not vel_errors:
+        raise RuntimeError("No finite velocity errors were evaluated.")
 
     mean_pos = sum(pos_errors) / len(pos_errors)
     mean_vel = sum(vel_errors) / len(vel_errors)
@@ -235,6 +242,12 @@ def main():
 
     logger.info(message)
     print(message)
+    if skipped_nonfinite_velocity:
+        skipped_message = (
+            "Skipped {:d} non-finite velocity error(s) at test indices: {}"
+        ).format(len(skipped_nonfinite_velocity), skipped_nonfinite_velocity)
+        logger.warning(skipped_message)
+        print(skipped_message)
 
 
 if __name__ == "__main__":
