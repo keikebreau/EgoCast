@@ -42,7 +42,7 @@
         , "video_model":false
         , "use_aria":true
         ,"forecast_sec":0
-        , "split": "test"
+        , "split": "val"
         ,"use_pseudo":false
         , "dataloader_num_workers": 0
       }
