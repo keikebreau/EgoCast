@@ -1,7 +1,7 @@
 {
   "task": "EgoExo"  //  root/task/videos-models-options
   , "model": "egocast" // "plain"
-  , "gpu_ids": [5] //
+  , "gpu_ids": [0] //
 
   , "merge_bn": true               // merge BN
   , "merge_bn_startpoint": 400000  // merge BN after N iterations
@@ -48,7 +48,7 @@
       , "video_model":false
       , "use_aria":true
       ,"forecast_sec":0
-      , "split": "test"
+      , "split": "val"
       ,"use_pseudo":false
       ,"use_rot":true
       ,"coord":"aria" //"aria" for frame normalization, "global" for global coordinates
@@ -76,7 +76,8 @@
   }
 
   , "train": {
-    "G_lossfn_type": "l1"               // "l1" preferred | "l2sum" | "l2" | "ssim" 
+    "manual_seed": 42
+    , "G_lossfn_type": "l1"               // "l1" preferred | "l2sum" | "l2" | "ssim" 
     , "G_lossfn_weight": 1.0            // default
 
     , "G_optimizer_type": "adam"        // fixed, adam is enough
