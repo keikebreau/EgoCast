@@ -137,7 +137,7 @@ def main(json_path='options/train_egocast_forecasting.json'):
     for phase, dataset_opt in opt['datasets'].items():
 
         if phase == 'train':
-            breakpoint()
+            #breakpoint()
             train_set = define_Dataset(dataset_opt)
             train_size = int(math.ceil(len(train_set) / dataset_opt['dataloader_batch_size']))
             logger.info('Number of train images: {:,d}, iters: {:,d}'.format(len(train_set), train_size))
