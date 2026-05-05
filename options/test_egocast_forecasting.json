@@ -32,7 +32,7 @@
       ,"use_rot":true
       ,"coord": "aria" //"aria" for frame normalization, "global" for global coordinates
       ,"future":true
-      ,"future_frames":30 // Future frames (modify if needed)
+      ,"future_frames":15 // Future frames (modify if needed)
     , "output":"skeleton" //"aria","skeleton"
     }
     , "test": {
@@ -52,7 +52,7 @@
       ,"use_rot":true
       ,"coord":"aria" //"aria" for frame normalization, "global" for global coordinates
       ,"future":true
-      ,"future_frames":30 // Future frames (modify if needed)
+      ,"future_frames":15 // Future frames (modify if needed)
       , "output":"skeleton" //"aria","skeleton"
       ,"route": "/home/jpuentes/jpuentes2/EgoPoseAgosto/forecasting/EgoPose/repo/EgoCast/results/results_EgoCast_15Frames/EgoExo" // Add input path
       ,"pred_input":true

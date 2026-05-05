@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import re
 
 import torch
 from torch.utils.data import DataLoader
@@ -16,6 +17,72 @@ def _as_float(value):
     if torch.is_tensor(value):
         return float(value.detach().cpu())
     return float(value)
+
+
+def _forecast_output_dim(opt):
+    dataset_opt = opt["datasets"]["train"]
+    if dataset_opt["use_aria"]:
+        if dataset_opt["use_rot"]:
+            per_frame = 7 if dataset_opt["output"] == "aria" else 58
+        else:
+            per_frame = 3 if dataset_opt["output"] == "aria" else 54
+    else:
+        per_frame = 63
+    return per_frame * dataset_opt["future_frames"]
+
+
+def _find_stabilizer_output_dim(state_dict):
+    output_keys = [
+        key
+        for key, value in state_dict.items()
+        if re.match(r"(module\.)?stabilizer\.\d+\.weight$", key)
+        and hasattr(value, "ndim")
+        and value.ndim == 2
+    ]
+    if not output_keys:
+        return None
+
+    def layer_index(key):
+        match = re.search(r"stabilizer\.(\d+)\.weight$", key)
+        return int(match.group(1)) if match else -1
+
+    output_key = max(output_keys, key=layer_index)
+    return state_dict[output_key].shape[0]
+
+
+def _check_checkpoint_shape(opt):
+    checkpoint = opt["path"]["pretrained"]
+    if checkpoint is None:
+        return
+    if not os.path.exists(checkpoint):
+        raise FileNotFoundError("Checkpoint does not exist: {}".format(checkpoint))
+
+    state_dict = torch.load(checkpoint, map_location="cpu")
+    if isinstance(state_dict, dict) and "params" in state_dict:
+        state_dict = state_dict["params"]
+
+    checkpoint_dim = _find_stabilizer_output_dim(state_dict)
+    expected_dim = _forecast_output_dim(opt)
+    if checkpoint_dim is not None and checkpoint_dim != expected_dim:
+        per_frame = 7 if opt["datasets"]["train"]["output"] == "aria" else 58
+        if not opt["datasets"]["train"]["use_aria"]:
+            per_frame = 63
+        elif not opt["datasets"]["train"]["use_rot"]:
+            per_frame = 3 if opt["datasets"]["train"]["output"] == "aria" else 54
+        checkpoint_frames = checkpoint_dim // per_frame if checkpoint_dim % per_frame == 0 else "unknown"
+        raise ValueError(
+            "Checkpoint/config forecasting horizon mismatch. The checkpoint output head has "
+            "{} values, but the current config expects {} values. This usually means "
+            "future_frames differs. Checkpoint appears to use future_frames={}; config uses "
+            "future_frames={}. Re-run with --future-frames {} or edit the option file."
+            .format(
+                checkpoint_dim,
+                expected_dim,
+                checkpoint_frames,
+                opt["datasets"]["train"]["future_frames"],
+                checkpoint_frames,
+            )
+        )
 
 
 def main():
@@ -37,6 +104,12 @@ def main():
         type=int,
         default=None,
         help="Optional cap on the number of test sequences to evaluate.",
+    )
+    parser.add_argument(
+        "--future-frames",
+        type=int,
+        default=None,
+        help="Optional forecasting horizon override. Applied to train/test config sections.",
     )
     parser.add_argument(
         "--skip-indices",
@@ -69,6 +142,10 @@ def main():
     elif args.pred_input:
         opt["datasets"]["test"]["pred_input"] = True
 
+    if args.future_frames is not None:
+        opt["datasets"]["train"]["future_frames"] = args.future_frames
+        opt["datasets"]["test"]["future_frames"] = args.future_frames
+
     if not opt["datasets"]["test"]["future"]:
         raise ValueError("This script is only for forecasting configs with datasets.test.future=true.")
 
@@ -83,6 +160,8 @@ def main():
                 "current-frame prediction files. Use --gt-input to evaluate from ground-truth "
                 "history instead."
             )
+
+    _check_checkpoint_shape(opt)
 
     for key in ["log", "images"]:
         path = opt["path"].get(key)
