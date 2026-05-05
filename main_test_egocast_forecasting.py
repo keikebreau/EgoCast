@@ -31,6 +31,19 @@ def _forecast_output_dim(opt):
     return per_frame * dataset_opt["future_frames"]
 
 
+def _slowfast_summary_dim(opt):
+    net_opt = opt["netG"]
+    embed_dim = net_opt["embed_dim"]
+    beta = max(1, int(net_opt.get("slowfast_beta", 4)))
+    fast_dim = max(8, embed_dim // beta)
+    recent_frames = max(0, int(net_opt.get("slowfast_recent_frames", 0)))
+    recent_dim = embed_dim * recent_frames
+    if net_opt.get("slowfast_use_recent_delta", False):
+        recent_dim += embed_dim
+    video_dim = 768 if net_opt.get("video_model", False) else 0
+    return embed_dim + fast_dim + recent_dim + video_dim
+
+
 def _find_stabilizer_output_dim(state_dict):
     output_keys = [
         key
@@ -50,6 +63,13 @@ def _find_stabilizer_output_dim(state_dict):
 
     output_key = max(output_keys, key=layer_index)
     return state_dict[output_key].shape[0]
+
+
+def _find_slowfast_summary_dim(state_dict):
+    for key, value in state_dict.items():
+        if re.match(r"(module\.)?forecast_head\.output\.0\.weight$", key):
+            return value.shape[1]
+    return None
 
 
 def _check_checkpoint_shape(opt):
@@ -74,6 +94,17 @@ def _check_checkpoint_shape(opt):
             "netG.forecast_head in the option file."
             .format(checkpoint_head, config_head, checkpoint_head)
         )
+
+    if config_is_slowfast:
+        checkpoint_summary_dim = _find_slowfast_summary_dim(state_dict)
+        expected_summary_dim = _slowfast_summary_dim(opt)
+        if checkpoint_summary_dim is not None and checkpoint_summary_dim != expected_summary_dim:
+            raise ValueError(
+                "Checkpoint/config slow-fast head mismatch. The checkpoint summary dimension "
+                "is {}, but the current config expects {}. Check slowfast_beta, "
+                "slowfast_recent_frames, slowfast_use_recent_delta, and video_model."
+                .format(checkpoint_summary_dim, expected_summary_dim)
+            )
 
     checkpoint_dim = _find_stabilizer_output_dim(state_dict)
     expected_dim = _forecast_output_dim(opt)
@@ -133,6 +164,17 @@ def main():
         help="Optional forecasting head override. Must match the checkpoint architecture.",
     )
     parser.add_argument(
+        "--slowfast-recent-frames",
+        type=int,
+        default=None,
+        help="Optional number of recent encoded frames concatenated into the slow-fast head.",
+    )
+    parser.add_argument(
+        "--slowfast-use-recent-delta",
+        action="store_true",
+        help="Concatenate the last encoded frame delta into the slow-fast head.",
+    )
+    parser.add_argument(
         "--skip-indices",
         type=int,
         nargs="*",
@@ -168,6 +210,10 @@ def main():
         opt["datasets"]["test"]["future_frames"] = args.future_frames
     if args.forecast_head is not None:
         opt["netG"]["forecast_head"] = args.forecast_head
+    if args.slowfast_recent_frames is not None:
+        opt["netG"]["slowfast_recent_frames"] = args.slowfast_recent_frames
+    if args.slowfast_use_recent_delta:
+        opt["netG"]["slowfast_use_recent_delta"] = True
 
     if not opt["datasets"]["test"]["future"]:
         raise ValueError("This script is only for forecasting configs with datasets.test.future=true.")

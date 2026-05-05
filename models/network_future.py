@@ -17,11 +17,18 @@ class SlowFastForecastHead(nn.Module):
             alpha=4,
             beta=4,
             dropout=0.0,
+            recent_frames=0,
+            use_recent_delta=False,
             video_dim=0):
         super(SlowFastForecastHead, self).__init__()
         self.alpha = max(1, int(alpha))
+        self.recent_frames = max(0, int(recent_frames))
+        self.use_recent_delta = bool(use_recent_delta)
         fast_dim = max(8, embed_dim // max(1, int(beta)))
         slow_dim = embed_dim
+        recent_dim = embed_dim * self.recent_frames
+        if self.use_recent_delta:
+            recent_dim += embed_dim
 
         self.fast_proj = nn.Linear(embed_dim, fast_dim)
         self.slow_proj = nn.Linear(embed_dim, slow_dim)
@@ -41,7 +48,7 @@ class SlowFastForecastHead(nn.Module):
         self.slow_pool = nn.AdaptiveAvgPool1d(1)
 
         output_layers = [
-                            nn.Linear(slow_dim + fast_dim + video_dim, hidden_dim),
+                            nn.Linear(slow_dim + fast_dim + recent_dim + video_dim, hidden_dim),
                             nn.ReLU()
         ]
         if dropout > 0:
@@ -51,6 +58,27 @@ class SlowFastForecastHead(nn.Module):
 
     def _slow_sample(self, x):
         return x[:, ::self.alpha, :]
+
+    def _recent_summary(self, encoded_sequence):
+        if self.recent_frames <= 0 and not self.use_recent_delta:
+            return None
+
+        summaries = []
+        if self.recent_frames > 0:
+            recent = encoded_sequence[:, -self.recent_frames:, :]
+            if recent.shape[1] < self.recent_frames:
+                pad = recent[:, :1, :].expand(-1, self.recent_frames - recent.shape[1], -1)
+                recent = torch.cat([pad, recent], dim=1)
+            summaries.append(recent.reshape(recent.shape[0], -1))
+
+        if self.use_recent_delta:
+            if encoded_sequence.shape[1] > 1:
+                delta = encoded_sequence[:, -1, :] - encoded_sequence[:, -2, :]
+            else:
+                delta = torch.zeros_like(encoded_sequence[:, -1, :])
+            summaries.append(delta)
+
+        return torch.cat(summaries, dim=1)
 
     def forward(self, encoded_sequence, video_features=None):
         fast_sequence = self.fast_proj(encoded_sequence)
@@ -64,6 +92,9 @@ class SlowFastForecastHead(nn.Module):
         fast_summary = self.fast_pool(fast_features).squeeze(-1)
         slow_summary = self.slow_pool(slow_features).squeeze(-1)
         summary = torch.cat([slow_summary, fast_summary], dim=1)
+        recent_summary = self._recent_summary(encoded_sequence)
+        if recent_summary is not None:
+            summary = torch.cat([summary, recent_summary], dim=1)
         if video_features is not None:
             summary = torch.cat([summary, video_features], dim=1)
         return self.output(summary)
@@ -102,6 +133,8 @@ class EgoCast(nn.Module):
                                 alpha=opt['netG'].get('slowfast_alpha', 4),
                                 beta=opt['netG'].get('slowfast_beta', 4),
                                 dropout=opt['netG'].get('slowfast_dropout', 0.0),
+                                recent_frames=opt['netG'].get('slowfast_recent_frames', 0),
+                                use_recent_delta=opt['netG'].get('slowfast_use_recent_delta', False),
                                 video_dim=768)
             else:
                 self.ap = nn.AdaptiveAvgPool1d(embed_dim)
@@ -119,7 +152,9 @@ class EgoCast(nn.Module):
                                 hidden_dim=opt['netG'].get('slowfast_hidden_dim', 256),
                                 alpha=opt['netG'].get('slowfast_alpha', 4),
                                 beta=opt['netG'].get('slowfast_beta', 4),
-                                dropout=opt['netG'].get('slowfast_dropout', 0.0))
+                                dropout=opt['netG'].get('slowfast_dropout', 0.0),
+                                recent_frames=opt['netG'].get('slowfast_recent_frames', 0),
+                                use_recent_delta=opt['netG'].get('slowfast_use_recent_delta', False))
             else:
                 self.stabilizer = nn.Sequential(
                                 nn.AdaptiveAvgPool1d(embed_dim),
