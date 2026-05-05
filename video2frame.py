@@ -7,16 +7,25 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import multiprocessing.dummy as mp 
 
-def extract_frames(video_path):
-    frames = []
+def extract_frames(video_path, frame_indices, take_folder):
+    target_frames = set(int(frame) for frame in frame_indices)
     cap = cv2.VideoCapture(video_path)
+    frame_idx = 0
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
-        frames.append(frame)
+
+        if frame_idx in target_frames:
+            frame_path = os.path.join(take_folder, f"{frame_idx}.png")
+            if not os.path.exists(frame_path):
+                cv2.imwrite(frame_path, frame)
+            target_frames.remove(frame_idx)
+            if not target_frames:
+                break
+
+        frame_idx += 1
     cap.release()
-    return frames
 
 def extract_images(args):
     idx, root_poses, root_takes, phase, progress_bar = args
@@ -66,17 +75,10 @@ def extract_images(args):
         return
 
     video_path = os.path.join(video_dir, aria_file)
-    video_frames = extract_frames(video_path)
-
-    for frame in take_json:
-        try:
-            frame_name = frame + ".png"
-            frame_path = os.path.join(take_folder, frame_name)
-            if not os.path.exists(frame_path):
-                cv2.imwrite(frame_path, video_frames[int(frame)])
-        except Exception as e:
-            print(f"Error in frame {frame}: {e}")
-            continue
+    try:
+        extract_frames(video_path, take_json, take_folder)
+    except Exception as e:
+        print(f"Error extracting frames for {take_id}: {e}")
 
     progress_bar.update(1)  # Update the tqdm progress bar
 
