@@ -7,8 +7,8 @@
   , "merge_bn_startpoint": 400000  // merge BN after N iterations
 
   , "path": {
-    "root": "results/results_EgoCast_15Frames"// Name of root results directory         
-    , "pretrained_netG": "results/results_EgoCast_15Frames/EgoExo/models/20000_G.pth" //  Name of checkpoint file 
+    "root": "results/results_EgoCast_30Frames"// Name of root results directory         
+    , "pretrained_netG": "results/results_EgoCast_30Frames/EgoExo/models/20000_G.pth" //  Name of checkpoint file 
   }
   , "support_dir": "support_data/"
   ,"wandb_mode":"online" //online, disabled
@@ -32,7 +32,7 @@
       ,"use_rot":true
       ,"coord": "aria" //"aria" for frame normalization, "global" for global coordinates
       ,"future":true
-      ,"future_frames":15 // Future frames (modify if needed)
+      ,"future_frames":30 // Future frames (modify if needed)
     , "output":"skeleton" //"aria","skeleton"
     }
     , "test": {
@@ -52,7 +52,7 @@
       ,"use_rot":true
       ,"coord":"aria" //"aria" for frame normalization, "global" for global coordinates
       ,"future":true
-      ,"future_frames":15 // Future frames (modify if needed)
+      ,"future_frames":30 // Future frames (modify if needed)
       , "output":"skeleton" //"aria","skeleton"
       ,"route": "/home/jpuentes/jpuentes2/EgoPoseAgosto/forecasting/EgoPose/repo/EgoCast/results/results_EgoCast_15Frames/EgoExo" // Add input path
       ,"pred_input":true

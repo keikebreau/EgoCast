@@ -7,12 +7,12 @@
   , "merge_bn_startpoint": 400000  // merge BN after N iterations
 
   , "path": {
-    "root": "results/results_EgoCast_15Frames_slowfast_recent" // keep separate from legacy and plain slow-fast checkpoints
+    "root": "results/results_EgoCast_30Frames_slowfast_recent" // keep separate from legacy and plain slow-fast checkpoints
     , "pretrained_netG":null  // Add the path of a matching slow-fast-recent forecasting checkpoint to resume
   }
   , "support_dir": "support_data/"
   ,"wandb_mode":"disabled" //online, disabled
-  ,"wandb_name":"results_forecasting_15frames_slowfast_recent"
+  ,"wandb_name":"results_forecasting_30frames_slowfast_recent"
   , "datasets": {
     "train": {
       "name": "train_dataset"           // just name
@@ -32,7 +32,7 @@
       ,"use_rot":true
       ,"coord": "aria" //"aria" for frame normalization, "global" for global coordinates
       ,"future":true
-      ,"future_frames":15 //modify the number of future frames forecasting
+      ,"future_frames":30 //modify the number of future frames forecasting
     , "output":"skeleton" //"aria","skeleton"
     ,"norm":true
     }
@@ -53,7 +53,7 @@
       ,"use_rot":true
       ,"coord":"aria" //"aria" for frame normalization, "global" for global coordinates
       ,"future":true
-      ,"future_frames":15 //modify the number of future frames forecasting
+      ,"future_frames":30 //modify the number of future frames forecasting
       , "output":"skeleton" //"aria","skeleton"
       ,"route": "/results/results_V2_video_norot/EgoExo_37K/videos" // modify the path of the model to be tested
       ,"pred_input":false
@@ -77,7 +77,7 @@
     , "slowfast_beta": 4                // fast pathway channel reduction
     , "slowfast_hidden_dim": 256
     , "slowfast_dropout": 0.0
-    , "slowfast_recent_frames": 4       // direct route for the latest encoded states
+    , "slowfast_recent_frames": 1       // direct route for the latest encoded states
     , "slowfast_use_recent_delta": true // direct route for the latest encoded change
   }
 
