@@ -1,4 +1,5 @@
 import argparse
+import csv
 import logging
 import os
 import re
@@ -17,6 +18,88 @@ def _as_float(value):
     if torch.is_tensor(value):
         return float(value.detach().cpu())
     return float(value)
+
+
+def _new_curve_accumulators(future_frames):
+    return {
+        "pos_sum": torch.zeros(future_frames, dtype=torch.float64),
+        "pos_count": torch.zeros(future_frames, dtype=torch.float64),
+        "aria_sum": torch.zeros(future_frames, dtype=torch.float64),
+        "aria_count": torch.zeros(future_frames, dtype=torch.float64),
+        "vel_sum": torch.zeros(max(future_frames - 1, 0), dtype=torch.float64),
+        "vel_count": torch.zeros(max(future_frames - 1, 0), dtype=torch.float64),
+    }
+
+
+def _add_curve_details(acc, details, output):
+    if output == "aria":
+        gt_aria = details["gt_aria"].detach().cpu()
+        pred_aria = details["pred_aria"].detach().cpu()
+        pos_error = torch.sqrt(torch.sum(torch.square(gt_aria[:, :, :3] - pred_aria[:, :, :3]), dim=-1))
+        acc["pos_sum"] += pos_error.sum(dim=0).double()
+        acc["pos_count"] += torch.full_like(acc["pos_count"], pos_error.shape[0], dtype=torch.float64)
+        aria_error = pos_error
+    else:
+        gt_skeleton = details["gt_skeleton"].detach().cpu()
+        pred_skeleton = details["pred_skeleton"].detach().cpu()
+        visible = details["visible"].detach().cpu()
+        joint_error = torch.sqrt(torch.sum(torch.square(gt_skeleton - pred_skeleton), dim=-1))
+        masked_joint_error = joint_error * visible
+        acc["pos_sum"] += masked_joint_error.sum(dim=(0, 2)).double()
+        acc["pos_count"] += visible.sum(dim=(0, 2)).double()
+
+        gt_aria = details["gt_aria"].detach().cpu()
+        pred_aria = details["pred_aria"].detach().cpu()
+        aria_error = torch.sqrt(torch.sum(torch.square(gt_aria[:, :, :3] - pred_aria[:, :, :3]), dim=-1))
+        acc["aria_sum"] += aria_error.sum(dim=0).double()
+        acc["aria_count"] += torch.full_like(acc["aria_count"], aria_error.shape[0], dtype=torch.float64)
+
+        if gt_skeleton.shape[1] > 1:
+            gt_velocity = (gt_skeleton[:, 1:, ...] - gt_skeleton[:, :-1, ...]) * 30
+            pred_velocity = (pred_skeleton[:, 1:, ...] - pred_skeleton[:, :-1, ...]) * 30
+            velocity_mask = visible[:, 1:, :] * visible[:, :-1, :]
+            velocity_error = torch.sqrt(torch.sum(torch.square(gt_velocity - pred_velocity), dim=-1))
+            masked_velocity_error = velocity_error * velocity_mask
+            acc["vel_sum"] += masked_velocity_error.sum(dim=(0, 2)).double()
+            acc["vel_count"] += velocity_mask.sum(dim=(0, 2)).double()
+        return
+
+    acc["aria_sum"] += aria_error.sum(dim=0).double()
+    acc["aria_count"] += torch.full_like(acc["aria_count"], aria_error.shape[0], dtype=torch.float64)
+    if gt_aria.shape[1] > 1:
+        gt_velocity = (gt_aria[:, 1:, :3] - gt_aria[:, :-1, :3]) * 30
+        pred_velocity = (pred_aria[:, 1:, :3] - pred_aria[:, :-1, :3]) * 30
+        velocity_error = torch.sqrt(torch.sum(torch.square(gt_velocity - pred_velocity), dim=-1))
+        acc["vel_sum"] += velocity_error.sum(dim=0).double()
+        acc["vel_count"] += torch.full_like(acc["vel_count"], velocity_error.shape[0], dtype=torch.float64)
+
+
+def _mean_or_none(sum_tensor, count_tensor, index):
+    if index < 0 or index >= len(sum_tensor) or count_tensor[index] <= 0:
+        return None
+    return (sum_tensor[index] / count_tensor[index]).item()
+
+
+def _write_curve_csv(path, acc):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", newline="") as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow([
+            "forecast_step",
+            "mpjpe_cm",
+            "aria_error_cm",
+            "within_horizon_velocity_error_cm_s",
+        ])
+        for step in range(len(acc["pos_sum"])):
+            pos = _mean_or_none(acc["pos_sum"], acc["pos_count"], step)
+            aria = _mean_or_none(acc["aria_sum"], acc["aria_count"], step)
+            vel = _mean_or_none(acc["vel_sum"], acc["vel_count"], step - 1)
+            writer.writerow([
+                step + 1,
+                "" if pos is None else "{:.6f}".format(pos * 100),
+                "" if aria is None else "{:.6f}".format(aria * 100),
+                "" if vel is None else "{:.6f}".format(vel * 100),
+            ])
 
 
 def _forecast_output_dim(opt):
@@ -151,6 +234,12 @@ def main():
         help="Optional cap on the number of test sequences to evaluate.",
     )
     parser.add_argument(
+        "--per-step-csv",
+        type=str,
+        default=None,
+        help="Optional CSV path for per-forecast-step MPJPE, Aria error, and within-horizon velocity error.",
+    )
+    parser.add_argument(
         "--future-frames",
         type=int,
         default=None,
@@ -263,6 +352,9 @@ def main():
     rot_errors = []
     skipped_nonfinite_velocity = []
     skipped = set(args.skip_indices or [])
+    curve_acc = None
+    if args.per_step_csv is not None:
+        curve_acc = _new_curve_accumulators(opt["datasets"]["test"]["future_frames"])
 
     with torch.no_grad():
         for index, test_data in enumerate(tqdm(test_loader, desc="Testing")):
@@ -272,13 +364,20 @@ def main():
                 continue
 
             model.feed_data(test_data, test=True)
-            result = model.test_fcast()
+            result = model.test_fcast(return_details=curve_acc is not None)
+
+            if curve_acc is not None:
+                _add_curve_details(curve_acc, result, opt["datasets"]["test"]["output"])
 
             if opt["datasets"]["test"]["output"] == "aria":
-                pos_error, rot_error, vel_error = result[:3]
+                pos_error = result["pos_error"] if curve_acc is not None else result[0]
+                rot_error = result["rot_error"] if curve_acc is not None else result[1]
+                vel_error = result["vel_error"] if curve_acc is not None else result[2]
                 rot_errors.append(_as_float(rot_error))
             else:
-                pos_error, vel_error, aria_error = result[:3]
+                pos_error = result["pos_error"] if curve_acc is not None else result[0]
+                vel_error = result["vel_error"] if curve_acc is not None else result[1]
+                aria_error = result["aria_error"] if curve_acc is not None else result[2]
                 aria_errors.append(_as_float(aria_error))
 
             pos_errors.append(_as_float(pos_error))
@@ -317,6 +416,11 @@ def main():
         ).format(len(skipped_nonfinite_velocity), skipped_nonfinite_velocity)
         logger.warning(skipped_message)
         print(skipped_message)
+    if curve_acc is not None:
+        _write_curve_csv(args.per_step_csv, curve_acc)
+        curve_message = "Wrote per-step horizon curves to {}".format(args.per_step_csv)
+        logger.info(curve_message)
+        print(curve_message)
 
 
 if __name__ == "__main__":

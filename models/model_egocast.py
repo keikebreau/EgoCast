@@ -414,7 +414,7 @@ class ModelEgoCast(ModelBase):
             cola.append(image)
         return torch.stack(cola, dim=0)
 
-    def test_fcast(self):
+    def test_fcast(self, return_details=False):
             
             self.netG.eval()
             self.L = self.L.squeeze()
@@ -461,6 +461,14 @@ class ModelEgoCast(ModelBase):
                     predicted_velocity = (matrix[1:,:,:3] - matrix[:-1,:,:3])*30
                     vel_error_ = torch.mean(torch.sqrt(torch.sum(torch.square(gt_velocity-predicted_velocity),axis=-1)))
                     
+                    if return_details:
+                        return {
+                            'pos_error': mean_pos,
+                            'rot_error': mean_rot,
+                            'vel_error': vel_error_,
+                            'gt_aria': gt_full,
+                            'pred_aria': matrix,
+                        }
                     return mean_pos,mean_rot,vel_error_,gt_full[1000,:,:3],matrix[1000,:,:3]
                 else:
                     matrix_ = matrix.reshape(matrix.shape[0],forecast_frame,-1)[:,:,:51].reshape(matrix.shape[0],forecast_frame,17,3)
@@ -481,6 +489,17 @@ class ModelEgoCast(ModelBase):
                     data_vel = visible_full[:-1]*torch.sqrt(torch.sum(torch.square(gt_velocity-predicted_velocity),axis=-1))
                     vel_error_  = data_vel.sum()/(data_vel!=0).sum()
 
+                    if return_details:
+                        return {
+                            'pos_error': mean,
+                            'vel_error': vel_error_,
+                            'aria_error': mean_aria,
+                            'gt_skeleton': gt_full,
+                            'pred_skeleton': matrix_,
+                            'visible': visible_full,
+                            'gt_aria': aria_gt,
+                            'pred_aria': aria_pos,
+                        }
                     return mean,vel_error_,mean_aria,gt_full,matrix_,visible_full
 
     def test_fcast_img(self,image_transforms = None):
