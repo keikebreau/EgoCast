@@ -184,6 +184,8 @@ def main(json_path='options/train_egocast_forecasting.json'):
         for i, train_data in enumerate(train_loader):
             #breakpoint()
             current_step += 1
+            if current_step > 30000:
+                break
             # -------------------------------
             # 1) feed patch pairs
             # -------------------------------

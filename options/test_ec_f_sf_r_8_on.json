@@ -1,5 +1,5 @@
 {
-  "task": "EgoExo"  //  root/task/videos-models-options
+  "task": "Test_EgoCast"  //  root/task/videos-models-options
   , "model": "egocast" // "plain"
   , "gpu_ids": [0] //
 
@@ -7,16 +7,16 @@
   , "merge_bn_startpoint": 400000  // merge BN after N iterations
 
   , "path": {
-    "root": "results/results_EgoCast_30Frames_slowfast"            // keep separate from legacy checkpoints
-    , "pretrained_netG":null  // Add the path of a slow-fast forecasting checkpoint to resume
+    "root": "results/results_ec_30_sf_r_8_on"// Name of root results directory         
+    , "pretrained_netG": "results/results_ec_30_sf_r_8_on/EgoExo/models/30000_G.pth" //  Name of checkpoint file 
   }
   , "support_dir": "support_data/"
-  ,"wandb_mode":"disabled" //online, disabled
-  ,"wandb_name":"results_forecasting_30frames_slowfast"
+  ,"wandb_mode":"online" //online, disabled
+  ,"wandb_name":"egoexo_future" //avatarposer,avatarposer_future
   , "datasets": {
     "train": {
       "name": "train_dataset"           // just name
-      , "dataset_type": "egoexo"         // "amass"
+      , "dataset_type": "egoexo"        
       , "dataroot": "./data_cameraready_fps60"// path of training dataset
       , "split": "train"
       , "dataloader_shuffle": true
@@ -32,13 +32,12 @@
       ,"use_rot":true
       ,"coord": "aria" //"aria" for frame normalization, "global" for global coordinates
       ,"future":true
-      ,"future_frames":30 //modify the number of future frames forecasting
+      ,"future_frames":30 // Future frames (modify if needed)
     , "output":"skeleton" //"aria","skeleton"
-    ,"norm":true
     }
     , "test": {
       "name": "test_dataset"            // just name
-      , "dataset_type": "test_egoexo"         // "amass"
+      , "dataset_type": "test_egoexo"         // "amass" 
       , "dataroot": "./data_cameraready_fps60"  // path of testing dataset
       , "dataloader_batch_size": 1     // batch size 1 | 16 | 32 | 48 | 64 | 128
       , "num_input": 1                  // number of tracking devices  3 | 4
@@ -53,20 +52,20 @@
       ,"use_rot":true
       ,"coord":"aria" //"aria" for frame normalization, "global" for global coordinates
       ,"future":true
-      ,"future_frames":30 //modify the number of future frames forecasting
+      ,"future_frames":30 // Future frames (modify if needed)
       , "output":"skeleton" //"aria","skeleton"
-      ,"route": "/results/results_V2_video_norot/EgoExo_37K/videos" // modify the path of the model to be tested
-      ,"pred_input":false
+      ,"route": "/home/jpuentes/jpuentes2/EgoPoseAgosto/forecasting/EgoPose/repo/EgoCast/results/results_EgoCast_15Frames/EgoExo" // Add input path
+      ,"pred_input":true
     }
   }
 
   , "netG": {
-    "net_type": "EgoCast_future"
-    , "num_layer": 3
+    "net_type": "EgoCast_future" 
+    , "num_layer": 3 
     , "input_dim": 58        // 3 if only position. 7 if rotation is included, 58 for 17*3+7
     , "output_dim": 132       // ouput channel number   #132
     , "embed_dim": 256          // channel number of linear embedding for transformer
-    , "nhead": 8
+    , "nhead": 8          // 
     , "init_type": "kaiming_normal"         // "orthogonal" | "normal" | "uniform" | "xavier_normal" | "xavier_uniform" | "kaiming_normal" | "kaiming_uniform"
     , "init_bn_type": "uniform"         // "uniform" | "constant"
     , "init_gain": 0.2
@@ -77,15 +76,16 @@
     , "slowfast_beta": 4                // fast pathway channel reduction
     , "slowfast_hidden_dim": 256
     , "slowfast_dropout": 0.0
+    , "slowfast_recent_frames": 8       // direct route for the latest encoded states
+    , "slowfast_use_recent_delta": true // direct route for the latest encoded change
   }
 
   , "train": {
-    "manual_seed": 42
-    , "G_lossfn_type": "l1"               // "l1" preferred | "l2sum" | "l2" | "ssim"
+    "G_lossfn_type": "l1"               // "l1" preferred | "l2sum" | "l2" | "ssim" 
     , "G_lossfn_weight": 1.0            // default
 
     , "G_optimizer_type": "adam"        // fixed, adam is enough
-    , "G_optimizer_lr": 1e-4           // learning rate
+    , "G_optimizer_lr": 1e-5           // learning rate
     , "G_optimizer_clipgrad": null      // unused
 
     , "G_scheduler_type": "MultiStepLR" // "MultiStepLR" is enough
@@ -95,7 +95,7 @@
     , "G_regularizer_orthstep": null    // unused
     , "G_regularizer_clipstep": null    // unused
 
-    , "checkpoint_test": 100000       // for testing
+    , "checkpoint_test": 10000         // for testing
     , "checkpoint_save": 10000           // for saving model
     , "checkpoint_print": 500          // for print
     , "G_param_strict":false
